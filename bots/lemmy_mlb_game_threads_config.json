@@ -431,6 +431,30 @@
             ],
             "subkeys": [],
             "parent_key": null
+        },
+        {
+            "key": "SUPPRESS_SCORING_PLAYS",
+            "description": "Suppress scoring plays table in the Game Thread.",
+            "type": "bool",
+            "val": false,
+            "options": [
+                true,
+                false
+            ],
+            "subkeys": [],
+            "parent_key": ""
+        },
+                {
+            "key": "SUPPRESS_HIGHLIGHTS",
+            "description": "Suppress highlights table in the Game Thread.",
+            "type": "bool",
+            "val": false,
+            "options": [
+                true,
+                false
+            ],
+            "subkeys": [],
+            "parent_key": ""
         }
     ],
     "Comments": [
@@ -821,6 +845,113 @@
             "parent_key": ""
         }
     ],
+    "Highlight Thread": [
+        {
+            "key": "ENABLED",
+            "description": "Enable posting of highlights in a separate thread.",
+            "type": "bool",
+            "val": true,
+            "options": [
+                true,
+                false
+            ],
+            "subkeys": [],
+            "parent_key": ""
+        },
+        {
+            "key": "FLAIR",
+            "description": "Flair to add to off day thread post.",
+            "type": "str",
+            "val": "Off Day Thread",
+            "options": [],
+            "subkeys": [],
+            "parent_key": null
+        },
+        {
+            "key": "LIVE_DISCUSSION",
+            "description": "Submit posts as `live discussions` instead of traditional comment threads on new Reddit (old Reddit will still show traditional comment threads).",
+            "type": "bool",
+            "val": false,
+            "options": [
+                true,
+                false
+            ],
+            "subkeys": [],
+            "parent_key": null
+        },
+        {
+            "key": "FOOTER",
+            "description": "Footer text to include at the bottom of the thread.",
+            "type": "str",
+            "val": "",
+            "options": [],
+            "subkeys": [],
+            "parent_key": ""
+        },
+        {
+            "key": "SUGGESTED_SORT",
+            "description": "Suggested sort to set on the post.",
+            "type": "str",
+            "val": "new",
+            "options": [
+                "",
+                "confidence",
+                "top",
+                "new",
+                "controversial",
+                "old",
+                "random",
+                "qa"
+            ],
+            "subkeys": [],
+            "parent_key": null
+        },
+        {
+            "key": "THREAD_TEMPLATE",
+            "description": "Template for the thread body. Don't modify the standard template file because your changes will be lost when updating. Make a copy instead and put the filename here. Path: /redball/bots/game_threads/templates/",
+            "type": "str",
+            "val": "highlight_thread.mako",
+            "options": [],
+            "subkeys": [],
+            "parent_key": ""
+        },
+        {
+            "key": "TITLE_PREFIX",
+            "description": "Prefix to include at the beginning of the thread title, after the team name. Applies only during regular season, or post season while still in contention. Trailing space and separator dash will be added.",
+            "type": "str",
+            "val": "Highlight Thread",
+            "options": [],
+            "subkeys": [],
+            "parent_key": ""
+        },
+        {
+            "key": "TITLE_TEMPLATE",
+            "description": "Template for the post title. Don't modify the standard template file because your changes will be lost when updating. Make a copy instead and put the filename here. Path: /redball/bots/game_threads/templates/",
+            "type": "str",
+            "val": "highlight_title.mako",
+            "options": [],
+            "subkeys": [],
+            "parent_key": ""
+        },
+        {
+            "key": "WEBHOOK_URL",
+            "description": "URL to call when thread is posted.",
+            "type": "str",
+            "val": "",
+            "options": [],
+            "subkeys": [],
+            "parent_key": ""
+        },
+        {
+            "key": "WEBHOOK_TEMPLATE",
+            "description": "Template to parse for body of call to WEBHOOK_URL.",
+            "type": "str",
+            "val": "off_webhook.mako",
+            "options": [],
+            "subkeys": [],
+            "parent_key": ""
+        }
+    ],
     "Post Game Thread": [
         {
             "key": "BOXSCORE_STYLE",
@@ -984,6 +1115,30 @@
             "type": "str",
             "val": "post_webhook.mako",
             "options": [],
+            "subkeys": [],
+            "parent_key": ""
+        },
+        {
+            "key": "SUPPRESS_SCORING_PLAYS",
+            "description": "Suppress scoring plays table in the Post Game Thread.",
+            "type": "bool",
+            "val": false,
+            "options": [
+                true,
+                false
+            ],
+            "subkeys": [],
+            "parent_key": ""
+        },
+                {
+            "key": "SUPPRESS_HIGHLIGHTS",
+            "description": "Suppress highlights table in the Post Game Thread.",
+            "type": "bool",
+            "val": false,
+            "options": [
+                true,
+                false
+            ],
             "subkeys": [],
             "parent_key": ""
         }

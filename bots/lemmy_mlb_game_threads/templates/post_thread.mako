@@ -23,10 +23,15 @@ due to ${data[gamePk]['schedule']['status']['reason']} \
 <%include file="scoring_plays.mako" />
 
 % endif
+% if not settings.get('Post Game Thread',{}).get('SUPPRESS_SCORING_PLAYS', False):
+<%include file="scoring_plays.mako" />
+
+% endif
+% if not settings.get('Post Game Thread',{}).get('SUPPRESS_HIGHLIGHTS', False):
 <%include file="highlights.mako" />
 
+%endif
 <%include file="linescore.mako" />
-
 % if not settings.get('Post Game Thread',{}).get('SUPPRESS_DECISIONS', False):
 <%include file="decisions.mako" />
 

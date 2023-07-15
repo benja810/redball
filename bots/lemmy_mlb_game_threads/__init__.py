@@ -958,7 +958,8 @@ class Bot(object):
                     }
                 )
                 # Only sticky when posting the thread
-                if self.settings.get('Reddit',{}).get('STICKY',False): self.sticky_thread(offDayThread)
+                if self.settings.get("Reddit", {}).get("STICKY", False):
+                    self.sticky_thread(offDayThread)
 
         if not offDayThread:
             (offDayThread, offDayThreadText) = self.prep_and_post(
@@ -1030,7 +1031,9 @@ Last Updated: """
                         text = self._truncate_post(text)
                         self.lemmy.editPost(offDayThread["post"]["id"], text)
                         self.log.info("Off day thread edits submitted.")
-                        self.count_check_edit(offDayThread["post"]["id"], "NA", edit=True)
+                        self.count_check_edit(
+                            offDayThread["post"]["id"], "NA", edit=True
+                        )
                         self.log_last_updated_date_in_db(offDayThread["post"]["id"])
                     elif text == "":
                         self.log.info(
@@ -1038,7 +1041,9 @@ Last Updated: """
                         )
                     else:
                         self.log.info("No changes to off day thread.")
-                        self.count_check_edit(offDayThread["post"]["id"], "NA", edit=False)
+                        self.count_check_edit(
+                            offDayThread["post"]["id"], "NA", edit=False
+                        )
                 except Exception as e:
                     self.log.error("Error editing off day thread: {}".format(e))
                     self.error_notification("Error editing off day thread")
@@ -1255,7 +1260,8 @@ Last Updated: """
                     }
                 )
                 # Only sticky when posting the thread
-                if self.settings.get('Reddit',{}).get('STICKY',False): self.sticky_thread(gameDayThread)
+                if self.settings.get("Reddit", {}).get("STICKY", False):
+                    self.sticky_thread(gameDayThread)
 
         # Check if post game thread is already posted, and skip game day thread if so
         if (
@@ -1871,6 +1877,40 @@ Last Updated: """
                         "Game thread is disabled, so skipping for game {}...".format(pk)
                     )
             else:
+                # Submit Highlights Thread
+                # Something is funky in the return logic after the game thread,
+                # so submit the hightlights thread first
+                if self.settings.get("Highlight Thread", {}).get("ENABLED", False):
+                    self.log.info("Preparing to post highlight {} thread...".format(pk))
+                    (highlightThread, highlightThreadText) = self.prep_and_post(
+                        "highlight",
+                        pk,
+                        postFooter="""
+
+                Posted: """
+                        + self.convert_timezone(
+                            datetime.utcnow(), self.myTeam["venue"]["timeZone"]["id"]
+                        ).strftime("%m/%d/%Y %I:%M:%S %p %Z"),
+                    )
+                    self.activeGames[pk].update(
+                        {
+                            "highlightThread": highlightThread,
+                            "highlightThreadText": highlightThreadText,
+                            "highlightThreadTitle": highlightThread["post"]["name"]
+                            if highlightThread not in [None, False]
+                            else None,
+                        }
+                    )
+                    # Thread is not posted, so don't start an update loop
+                if not self.activeGames[pk].get(
+                    "highlightThread"
+                ) and self.settings.get("Highlight Thread", {}).get("ENABLED", True):
+                    # Thread is enabled but failed to post
+                    self.log.info(
+                        "Highlight thread not posted. Don't try to update it."
+                    )
+                    self.activeGames[pk].update({"highlightThreadSkip": True})
+
                 # Submit Game Thread
                 self.log.info("Preparing to post game {} thread...".format(pk))
                 (gameThread, gameThreadText) = self.prep_and_post(
@@ -2025,6 +2065,62 @@ Last Updated: """ + self.convert_timezone(
                         self.commonData[pk]["schedule"]["status"]["statusCode"],
                         edit=False,
                     )
+                if self.settings.get("Highlight Thread", {}).get(
+                    "ENABLED", False
+                ) and not self.activeGames[pk].get("highlightSkip", False):
+                    # Re-generate highlight thread code, compare to current code, edit if different
+                    text = self.render_template(
+                        thread="highlight",
+                        templateType="thread",
+                        data=self.commonData,
+                        gamePk=pk,
+                        settings=self.settings,
+                    )
+                    self.log.debug(
+                        "rendered highlight {} thread text: {}".format(pk, text)
+                    )
+                    if (
+                        text != self.activeGames[pk].get("highlightThreadText")
+                        and text != ""
+                    ):
+                        self.activeGames[pk].update({"highlightThreadText": text})
+                        # Add last updated timestamp
+                        text += """
+
+            Last Updated: """ + self.convert_timezone(
+                            datetime.utcnow(), self.myTeam["venue"]["timeZone"]["id"]
+                        ).strftime(
+                            "%m/%d/%Y %I:%M:%S %p %Z"
+                        )
+                        text = self._truncate_post(text)
+                        self.lemmy.editPost(
+                            self.activeGames[pk]["highlightThread"]["post"]["id"],
+                            body=text,
+                        )
+                        self.log.info(
+                            "Edits submitted for {} highlight thread.".format(pk)
+                        )
+                        self.count_check_edit(
+                            self.activeGames[pk]["highlightThread"]["post"]["id"],
+                            self.commonData[pk]["schedule"]["status"]["statusCode"],
+                            edit=True,
+                        )
+                        self.log_last_updated_date_in_db(
+                            self.activeGames[pk]["highlightThread"]["post"]["id"]
+                        )
+                    elif text == "":
+                        self.log.info(
+                            "Skipping highlight thread {} edit since thread text is blank...".format(
+                                pk
+                            )
+                        )
+                    else:
+                        self.log.info("No changes to {} highlight thread.".format(pk))
+                        self.count_check_edit(
+                            self.activeGames[pk]["highlightThread"]["post"]["id"],
+                            self.commonData[pk]["schedule"]["status"]["statusCode"],
+                            edit=False,
+                        )
 
             update_game_thread_until = self.settings.get("Game Thread", {}).get(
                 "UPDATE_UNTIL", ""
@@ -2191,6 +2287,9 @@ Last Updated: """ + self.convert_timezone(
         # Mark game thread as stale
         if self.activeGames[pk].get("gameThread"):
             self.staleThreads.append(self.activeGames[pk]["gameThread"])
+            # If there is a highlight thread, unsticky it as well
+            if self.activeGames[pk].get("highlightThread", None):
+                self.staleThreads.append(self.activeGames[pk]["highlightThread"])
 
         self.log.debug("Ending game update thread...")
         return
@@ -2314,7 +2413,8 @@ Last Updated: """ + self.convert_timezone(
                     }
                 )
                 # Only sticky when posting the thread
-                if self.settings.get('Reddit',{}).get('STICKY',False): self.sticky_thread(self.activeGames[pk]['postGameThread'])
+                if self.settings.get("Reddit", {}).get("STICKY", False):
+                    self.sticky_thread(self.activeGames[pk]["postGameThread"])
 
         game_result = (
             "EXCEPTION"
@@ -5195,7 +5295,7 @@ Last Updated: """ + self.convert_timezone(
         return True
 
     def prep_and_post(self, thread, pk=None, postFooter=None):
-        # thread = ['weekly', 'off', 'gameday', 'game', 'post']
+        # thread = ['weekly', 'off', 'gameday', 'game', 'post', 'highlight']
         # pk = gamePk or list of gamePks
         # postFooter = text to append to post body, but not to include in return text value
         #   (normally contains a timestamp that would prevent comparison next time to check for changes)
@@ -5230,6 +5330,8 @@ Last Updated: """ + self.convert_timezone(
             if thread == "game"
             else self.settings.get("Post Game Thread", {}).get("TITLE_MOD", "")
             if thread == "post"
+            else self.settings.get("Highlight Thread", {}).get("TITLE_MOD", "")
+            if thread == "highlight"
             else ""
         )
         if "upper" in title_mod.lower():
@@ -5446,6 +5548,8 @@ Last Updated: """ + self.convert_timezone(
             if thread == "post"
             else self.settings.get("Comments", {}).get(setting, "")
             if thread == "comment"
+            else self.settings.get("Highlight Thread", {}).get(setting, "")
+            if thread == "highlight"
             else ""
         )
         try:
@@ -6331,9 +6435,11 @@ Last Updated: """ + self.convert_timezone(
 
     def _truncate_post(self, text):
         warning_text = " \  # Truncated, post length limit reached."
-        max_length = self.settings.get("Lemmy", {}).get("POST_CHARACTER_LIMIT", 10000) - len(warning_text)
+        max_length = self.settings.get("Lemmy", {}).get(
+            "POST_CHARACTER_LIMIT", 10000
+        ) - len(warning_text)
         if len(text) >= max_length:
-            new_text = text[0:max_length - 1]
+            new_text = text[0 : max_length - 1]
             new_text += warning_text
         else:
             new_text = text
