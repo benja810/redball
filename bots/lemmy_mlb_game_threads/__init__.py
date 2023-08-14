@@ -66,6 +66,9 @@ class Bot(object):
             console_log_level=self.settings.get("Logging", {}).get("CONSOLE_LOG_LEVEL"),
             clear_first=True,
             propagate=False,
+            log_to_discord=self.settings.get("Logging", {}).get("LOG_TO_DISCORD", False),
+            discord_log_level=self.settings.get("Logging", {}).get("DISCORD_LOG_LEVEL", "ERROR"),
+            discord_webhook_url=self.settings.get("Logging", {}).get("DISCORD_WEBHOOK_URL", None)
         )
         self.log.debug(
             "Game Thread Bot v{} received settings: {}. Template path: {}".format(

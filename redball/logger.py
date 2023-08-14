@@ -5,6 +5,7 @@ import logging.handlers
 import os
 import sys
 import time
+from discord_logging.handler import DiscordHandler
 
 cwd = os.path.dirname(os.path.realpath(__file__))
 pardir = os.path.abspath(os.path.join(cwd, os.pardir))
@@ -37,6 +38,9 @@ def add_handlers(
     log_retention=7,
     console_log_level="INFO",
     clear_first=True,
+    log_to_discord=False,
+    discord_log_level="INFO",
+    discord_webhook_url=None
 ):
     if clear_first:
         clear_handlers(logger)
@@ -96,6 +100,25 @@ def add_handlers(
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 
+    if log_to_discord:
+        formatter = logging.Formatter(
+            "%(threadName)s: `%(message)s`",
+            datefmt="%M:%S",
+        )
+        discord_handler = DiscordHandler(
+            "Redball",
+            discord_webhook_url,
+            avatar_url="https://fanaticus.social/pictrs/image/a145a5ea-afda-49d7-95ac-afbfc5aa30f1.png?format=webp",
+            embed_line_wrap_threshold=200
+        )
+        discord_handler.setLevel(
+            getattr(logging, discord_log_level.upper(), 30)
+            if discord_log_level
+            else logging.INFO
+        )
+        discord_handler.setFormatter(formatter)
+        logger.addHandler(discord_handler)
+
     return True
 
 
@@ -110,6 +133,9 @@ def init_logger(
     console_log_level="INFO",
     clear_first=True,
     propagate=False,
+    log_to_discord=False,
+    discord_log_level="INFO",
+    discord_webhook_url=None
 ):
     log_to_console = (
         (log_to_console.lower() == "true")
@@ -143,6 +169,9 @@ def init_logger(
         log_retention=log_retention,
         console_log_level=console_log_level,
         clear_first=clear_first,
+        log_to_discord=log_to_discord,
+        discord_log_level=discord_log_level,
+        discord_webhook_url=discord_webhook_url
     )
 
     if log_file and log_to_file:

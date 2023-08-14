@@ -456,4 +456,17 @@ upgradeScripts = {
             time.time()
         ),
     ],
+    15: [
+        # Add Discord logging support
+        """INSERT OR IGNORE INTO rb_config (category, key, description, type, val, options, subkeys, parent_key, read_only)
+            VALUES ('Logging', 'LOG_TO_DISCORD', 'Log to Discord', 'bool', 'false', '[true, false]', '["DISCORD_LOG_LEVEL", "DISCORD_WEBHOOK_URL"]', '', 'False');""",
+        """INSERT OR IGNORE INTO rb_config (category, key, description, type, val, options, subkeys, parent_key, read_only)
+            VALUES ('Logging', 'DISCORD_LOG_LEVEL', 'Discord Log Level', 'str', '"ERROR"', '[]', '[]', 'LOG_TO_DISCORD', 'False');""",
+        """INSERT OR IGNORE INTO rb_config (category, key, description, type, val, options, subkeys, parent_key, read_only)
+            VALUES ('Logging', 'DISCORD_WEBHOOK_URL', 'Discord Webhook URL', 'str', '"https://"', '[]', '[]', 'LOG_TO_DISCORD', 'False');""",
+        # Update DB version
+        "UPDATE rb_meta SET val='14', lastUpdate='{}' WHERE key='dbVersion';".format(
+            time.time()
+        ),
+    ]
 }

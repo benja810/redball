@@ -572,6 +572,44 @@
             "parent_key": ""
         },
         {
+			"key": "DISCORD_LOG_LEVEL",
+			"description": "Discord Log Level",
+			"type": "str",
+			"val": "INFO",
+			"options": [
+				"DEBUG",
+				"INFO",
+				"WARNING",
+				"ERROR"
+			],
+			"subkeys": [],
+			"parent_key": "LOG_TO_DISCORD"
+		},
+		{
+			"key": "DISCORD_WEBHOOK_URL",
+			"description": "Discord Log Level",
+			"type": "str",
+			"val": "",
+			"options": [],
+			"subkeys": [],
+			"parent_key": "LOG_TO_DISCORD"
+		},
+		{
+			"key": "LOG_TO_DISCORD",
+			"description": "",
+			"type": "bool",
+			"val": true,
+			"options": [
+				true,
+				false
+			],
+			"subkeys": [
+				"DISCORD_LOG_LEVEL",
+				"DISCORD_WEBHOOK_URL"
+			],
+			"parent_key": ""
+		},
+        {
             "key": "LOG_TO_FILE",
             "description": "Log to File",
             "type": "bool",
