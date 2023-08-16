@@ -459,13 +459,41 @@ upgradeScripts = {
     15: [
         # Add Discord logging support
         """INSERT OR IGNORE INTO rb_config (category, key, description, type, val, options, subkeys, parent_key, read_only)
-            VALUES ('Logging', 'LOG_TO_DISCORD', 'Log to Discord', 'bool', 'false', '[true, false]', '["DISCORD_LOG_LEVEL", "DISCORD_WEBHOOK_URL"]', '', 'False');""",
-        """INSERT OR IGNORE INTO rb_config (category, key, description, type, val, options, subkeys, parent_key, read_only)
-            VALUES ('Logging', 'DISCORD_LOG_LEVEL', 'Discord Log Level', 'str', '"ERROR"', '[]', '[]', 'LOG_TO_DISCORD', 'False');""",
-        """INSERT OR IGNORE INTO rb_config (category, key, description, type, val, options, subkeys, parent_key, read_only)
-            VALUES ('Logging', 'DISCORD_WEBHOOK_URL', 'Discord Webhook URL', 'str', '"https://"', '[]', '[]', 'LOG_TO_DISCORD', 'False');""",
+            VALUES ('Logging', 'LOG_TO_DISCORD', 'Log to Discord', 'bool', 'false', '[true, false]', '["DISCORD_LOG_LEVEL", "DISCORD_WEBHOOK_URL"]', '', 'false'),
+                   ('Logging', 'DISCORD_LOG_LEVEL', 'Discord Log Level', 'str', '"ERROR"', '[]', '[]', '"LOG_TO_DISCORD"', 'false'),
+                   ('Logging', 'DISCORD_WEBHOOK_URL', 'Discord Webhook URL', 'str', '"https://"', '[]', '[]', '"LOG_TO_DISCORD"', 'false');""",
+        # Add settings to game thread bots: Logging > LOG_TO_DISCORD
+        """INSERT OR IGNORE INTO rb_botConfig (botId,category,key,description,type,val,options,subkeys,parent_key,read_only,system)
+        WITH RECURSIVE
+            bots(botId,category,key,description,type,val,options,subkeys,parent_key,read_only,system) AS (
+            VALUES(0,null,null,null,null,null,null,null,null,null,null)
+            UNION
+            SELECT b.id,'Logging','LOG_TO_DISCORD','Bot logging to a discord channel','bool','false','[true, false]','["DISCORD_LOG_LEVEL", "DISCORD_WEBHOOK_URL"]','','false','false'
+                FROM rb_botTypes bt, bots INNER JOIN rb_bots b ON bt.id = b.botType AND bt.moduleName='lemmy_mlb_game_threads'
+            )
+        SELECT * FROM bots;""",
+        # Add settings to game thread bots: Logging > DISCORD_LOG_LEVEL
+        """INSERT OR IGNORE INTO rb_botConfig (botId,category,key,description,type,val,options,subkeys,parent_key,read_only,system)
+        WITH RECURSIVE
+            bots(botId,category,key,description,type,val,options,subkeys,parent_key,read_only,system) AS (
+            VALUES(0,null,null,null,null,null,null,null,null,null,null)
+            UNION
+            SELECT b.id,'Logging','DISCORD_LOG_LEVEL','Bot logging to a discord channel','str','"WARN"','["DEBUG", "INFO", "WARN", "ERROR"]','[]', 'LOG_TO_DISCORD','false','false'
+                FROM rb_botTypes bt, bots INNER JOIN rb_bots b ON bt.id = b.botType AND bt.moduleName='lemmy_mlb_game_threads'
+            )
+        SELECT * FROM bots;""",
+        # Add settings to game thread bots: Logging > DISCORD_WEBHOOK_URL
+        """INSERT OR IGNORE INTO rb_botConfig (botId,category,key,description,type,val,options,subkeys,parent_key,read_only,system)
+        WITH RECURSIVE
+            bots(botId,category,key,description,type,val,options,subkeys,parent_key,read_only,system) AS (
+            VALUES(0,null,null,null,null,null,null,null,null,null,null)
+            UNION
+            SELECT b.id,'Logging','DISCORD_WEBHOOK_URL','Bot logging to a discord channel','str','"https://"','[]','[]','LOG_TO_DISCORD','false','false'
+                FROM rb_botTypes bt, bots INNER JOIN rb_bots b ON bt.id = b.botType AND bt.moduleName='lemmy_mlb_game_threads'
+            )
+        SELECT * FROM bots;""",
         # Update DB version
-        "UPDATE rb_meta SET val='14', lastUpdate='{}' WHERE key='dbVersion';".format(
+        "UPDATE rb_meta SET val='15', lastUpdate='{}' WHERE key='dbVersion';".format(
             time.time()
         ),
     ]

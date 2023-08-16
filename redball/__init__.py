@@ -103,6 +103,9 @@ log = logger.init_logger(
     file_log_level=logSettings["FILE_LOG_LEVEL"],
     log_retention=logSettings["LOG_RETENTION"],
     console_log_level=logSettings["CONSOLE_LOG_LEVEL"],
+    log_to_discord=logSettings.get("LOG_TO_DISCORD", False),
+    discord_log_level=logSettings.get("DISCORD_LOG_LEVEL", "ERROR"),
+    discord_webhook_url=logSettings.get("DISCORD_WEBHOOK_URL", None),
     clear_first=True,
 )
 
@@ -181,6 +184,9 @@ def startup(suppress_bots=False, dev=False, data_path=None, log_path=None):
         file_log_level=logSettings["FILE_LOG_LEVEL"],
         log_retention=logSettings["LOG_RETENTION"],
         console_log_level=logSettings["CONSOLE_LOG_LEVEL"],
+        log_to_discord=logSettings.get("LOG_TO_DISCORD", False),
+        discord_log_level=logSettings.get("DISCORD_LOG_LEVEL", "ERROR"),
+        discord_webhook_url=logSettings.get("DISCORD_WEBHOOK_URL", None),
         clear_first=True,
     )
     logger.init_logger(
@@ -192,6 +198,9 @@ def startup(suppress_bots=False, dev=False, data_path=None, log_path=None):
         file_log_level=logSettings["FILE_LOG_LEVEL"],
         log_retention=logSettings["LOG_RETENTION"],
         console_log_level=logSettings["CONSOLE_LOG_LEVEL"],
+        log_to_discord=logSettings.get("LOG_TO_DISCORD", False),
+        discord_log_level=logSettings.get("DISCORD_LOG_LEVEL", "ERROR"),
+        discord_webhook_url=logSettings.get("DISCORD_WEBHOOK_URL", None),
         clear_first=True,
     )
     logger.init_logger(
@@ -203,6 +212,9 @@ def startup(suppress_bots=False, dev=False, data_path=None, log_path=None):
         file_log_level=logSettings["FILE_LOG_LEVEL"],
         log_retention=logSettings["LOG_RETENTION"],
         console_log_level=logSettings["CONSOLE_LOG_LEVEL"],
+        log_to_discord=logSettings.get("LOG_TO_DISCORD", False),
+        discord_log_level=logSettings.get("DISCORD_LOG_LEVEL", "ERROR"),
+        discord_webhook_url=logSettings.get("DISCORD_WEBHOOK_URL", None),
         clear_first=True,
     )
 

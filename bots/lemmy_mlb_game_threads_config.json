@@ -587,7 +587,7 @@
 		},
 		{
 			"key": "DISCORD_WEBHOOK_URL",
-			"description": "Discord Log Level",
+			"description": "Discord Webhook URL",
 			"type": "str",
 			"val": "",
 			"options": [],
