@@ -997,6 +997,15 @@
             "options": [],
             "subkeys": [],
             "parent_key": null
+        },
+        {
+            "key": "CONFIG_PATH",
+            "description": "Path where custom configuration files are stored (defaults to the bot config directory).",
+            "type": "str",
+            "val": "",
+            "options": [],
+            "subkeys": [],
+            "parent_key": null
         }
     ],
     "Weekly Thread": [
@@ -1251,6 +1260,15 @@
             "description": "Maximum number of characters to post.",
             "type": "int",
             "val": 10000,
+            "options": [],
+            "subkeys": [],
+            "parent_key": ""
+        },
+        {
+            "key": "TEAM_URL_FILE",
+            "description": "JSON file containing a map of team URLs.  Keys are the MLB id number for each team.  Use a relative URL to ensure it will work for remote instances.",
+            "type": "str",
+            "val": "team_urls.json",
             "options": [],
             "subkeys": [],
             "parent_key": ""
