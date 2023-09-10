@@ -456,4 +456,15 @@ upgradeScripts = {
             time.time()
         ),
     ],
+    15: [
+        # Add Sidebar Updater bot type
+        """INSERT OR IGNORE INTO rb_botTypes (name, description, moduleName)
+            VALUES
+            ('lemmy-nfl-game-threads', 'Lemmy NFL Game Threads', 'lemmy_nfl_game_threads')
+        ;""",
+        # Update DB version
+        "UPDATE rb_meta SET val='15', lastUpdate='{}' WHERE key='dbVersion';".format(
+            time.time()
+        ),
+    ],
 }

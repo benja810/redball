@@ -309,6 +309,7 @@ def build_tables(tables, logg=log):
                 ('game-threads', 'MLB Game Threads', 'game_threads'),
                 ('lemmy-mlb-game-threads', 'Lemmy MLB Game Threads', 'lemmy_mlb_game_threads'),
                 ('nfl-game-threads', 'NFL Game Threads', 'nfl_game_threads'),
+                ('lemmy-nfl-game-threads', 'Lemmy NFL Game Threads', 'lemmy_nfl_game_threads'),
                 ('mlb-data', 'MLB Data', 'mlb_data'),
                 ('comment-response', 'Comment Response', 'comment_response'),
                 ('placeholder', 'Placeholder', '_template')

@@ -26,13 +26,12 @@ import os
 from mako.lookup import TemplateLookup
 import mako.exceptions
 
-from . import mynflapi
+from .. nfl_game_threads import mynflapi
+from .. lemmy_mlb_game_threads import plaw
 import pyprowl
 import twitter
 
-import praw
-
-__version__ = "2.3.0"
+__version__ = "1.0.0"
 
 DATA_LOCK = threading.Lock()
 
@@ -52,9 +51,9 @@ class Bot(object):
         if self.settings.get("Bot", {}).get("TEMPLATE_PATH", "") != "":
             self.BOT_TEMPLATE_PATH.append(self.settings["Bot"]["TEMPLATE_PATH"])
         self.BOT_TEMPLATE_PATH.append(os.path.join(self.BOT_PATH, "templates"))
-
         self.LOOKUP = TemplateLookup(directories=self.BOT_TEMPLATE_PATH)
-
+        self.lemmy = None
+        self.community = None
     def run(self):
         self.log = logger.init_logger(
             logger_name="redball.bots." + threading.current_thread().name,
@@ -80,8 +79,8 @@ class Bot(object):
         )
         self.build_tables()
 
-        # Initialize Reddit API connection
-        self.init_reddit()
+        # Initialize Lemmy API connection
+        self.init_lemmy()
 
         # Initialize scheduler
         if "SCHEDULER" in vars(self.bot):
@@ -324,13 +323,13 @@ class Bot(object):
                 "otherDivisionTeams": self.otherDivisionTeams,
                 "otherTodayGamesDetails": otherTodayGamesDetails,
             }
-            # Initialize vars to hold data about reddit and process threads
+            # Initialize vars to hold data about lemmy and process threads
             self.stopFlags = {"tailgate": False, "game": False, "post": False}
-            """ Holds flags to indicate when reddit threads should stop updating """
+            """ Holds flags to indicate when lemmy threads should stop updating """
             self.THREADS = {"tailgate": None, "game": None, "post": None}
-            """ Holds process threads that will post/monitor/update each reddit thread """
+            """ Holds process threads that will post/monitor/update each lemmy thread """
             self.threadCache = {"tailgate": {}, "game": {}, "post": {}}
-            """ Holds reddit threads and related data """
+            """ Holds lemmy threads and related data """
 
             isCanceled = False
             if myTeamTodayGameId:
@@ -831,7 +830,7 @@ class Bot(object):
             return
 
         # Unsticky stale threads
-        if self.settings.get("Reddit", {}).get("STICKY", False):
+        if self.settings.get("Lemmy", {}).get("STICKY", False):
             if len(self.staleThreads):
                 self.unsticky_threads(self.staleThreads)
                 self.staleThreads = []
@@ -843,8 +842,8 @@ class Bot(object):
         tailgateThread = None
         if len(tgThread) > 0:
             self.log.info(f"Tailgate thread found in database [{tgThread[0]['id']}].")
-            tailgateThread = self.reddit.submission(tgThread[0]["id"])
-            if not tailgateThread.author:
+            tailgateThread = self.lemmy.getPost(tgThread[0]["id"])
+            if not tailgateThread.get('creator', None):
                 self.log.warning("Tailgate thread appears to have been deleted.")
                 q = "update {}threads set deleted=1 where id='{}';".format(
                     self.dbTablePrefix, tailgateThread.id
@@ -857,22 +856,22 @@ class Bot(object):
 
                 tailgateThread = None
             else:
-                if tailgateThread.selftext.find("\n\n^^^Last ^^^Updated") != -1:
-                    tailgateThreadText = tailgateThread.selftext[
-                        0 : tailgateThread.selftext.find("\n\n^^^Last ^^^Updated:")
+                if tailgateThread['post']['body'].find("\n\n^Last^ ^Updated") != -1:
+                    tailgateThreadText = tailgateThread['post']['body'][
+                        0 : tailgateThread['post']['body'].find("\n\n^Last^ ^Updated:^")
                     ]
-                elif tailgateThread.selftext.find("\n\n^^^Posted") != -1:
-                    tailgateThreadText = tailgateThread.selftext[
-                        0 : tailgateThread.selftext.find("\n\n^^^Posted:")
+                elif tailgateThread['post']['body'].find("\n\n^Posted") != -1:
+                    tailgateThreadText = tailgateThread['post']['body'][
+                        0 : tailgateThread['post']['body'].find("\n\n^Posted:^")
                     ]
                 else:
-                    tailgateThreadText = tailgateThread.selftext
+                    tailgateThreadText = tailgateThread['post']['body']
 
                 self.threadCache["tailgate"].update(
                     {
                         "text": tailgateThreadText,
                         "thread": tailgateThread,
-                        "title": tailgateThread.title
+                        "title": tailgateThread['post']['name']
                         if tailgateThread not in [None, False]
                         else None,
                     }
@@ -886,14 +885,14 @@ class Bot(object):
                 "tailgate",
                 postFooter="""
 
-^^^Posted: ^^^"""
+^Posted:^ """
                 + self.convert_timezone(
                     datetime.utcnow(),
                     self.settings.get("Bot", {}).get(
                         "TEAM_TIMEZONE", "America/New_York"
                     ),
-                ).strftime("%m/%d/%Y ^^^%I:%M:%S ^^^%p ^^^%Z")
-                + ", ^^^Update ^^^Interval: ^^^{} ^^^Minutes".format(
+                ).strftime("^%m/%d/%Y^ ^%I:%M:%S^ ^%p^ ^%Z^")
+                + ", ^Update^ ^Interval:^ ^{}^ ^Minutes^".format(
                     self.settings.get("Tailgate Thread", {}).get("UPDATE_INTERVAL", 5)
                 ),
             )
@@ -901,7 +900,7 @@ class Bot(object):
                 {
                     "text": tailgateThreadText,
                     "thread": tailgateThread,
-                    "title": tailgateThread.title
+                    "title": tailgateThread['post']['name']
                     if tailgateThread not in [None, False]
                     else None,
                 }
@@ -939,26 +938,27 @@ class Bot(object):
                         text += (
                             """
 
-^^^Last ^^^Updated: ^^^"""
+^Last^ ^Updated:^ """
                             + self.convert_timezone(
                                 datetime.utcnow(),
                                 self.settings.get("Bot", {}).get(
                                     "TEAM_TIMEZONE", "America/New_York"
                                 ),
-                            ).strftime("%m/%d/%Y ^^^%I:%M:%S ^^^%p ^^^%Z")
-                            + ", ^^^Update ^^^Interval: ^^^{} ^^^Minutes".format(
+                            ).strftime("^%m/%d/%Y^ ^%I:%M:%S^ ^%p^ ^%Z^")
+                            + ", ^Update^ ^Interval:^ ^{}^ ^Minutes^".format(
                                 self.settings.get("Tailgate Thread", {}).get(
                                     "UPDATE_INTERVAL", 5
                                 )
                             )
                         )
-                        self.threadCache["tailgate"]["thread"].edit(text)
+                        self.lemmy.editPost(self.threadCache["tailgate"]["thread"]['post']['id'], title=self.threadCache["tailgate"]["thread"]['post']["name"], body=text)
+                        # self.threadCache["tailgate"]["thread"].edit(text)
                         self.log.info("Tailgate thread edits submitted.")
                         self.count_check_edit(
-                            self.threadCache["tailgate"]["thread"].id, "NA", edit=True
+                            self.threadCache["tailgate"]["thread"]['post']['id'], "NA", edit=True
                         )
                         self.log_last_updated_date_in_db(
-                            self.threadCache["tailgate"]["thread"].id
+                            self.threadCache["tailgate"]["thread"]['post']['id']
                         )
                     elif text == "":
                         self.log.info(
@@ -967,7 +967,7 @@ class Bot(object):
                     else:
                         self.log.info("No changes to tailgate thread.")
                         self.count_check_edit(
-                            self.threadCache["tailgate"]["thread"].id, "NA", edit=False
+                            self.threadCache["tailgate"]["thread"]['post']['id'], "NA", edit=False
                         )
                 except Exception as e:
                     self.log.error("Error editing tailgate thread: {}".format(e))
@@ -1099,8 +1099,8 @@ class Bot(object):
         gameThread = None
         if len(gThread) > 0:
             self.log.info("Game thread found in database [{}]".format(gThread[0]["id"]))
-            gameThread = self.reddit.submission(gThread[0]["id"])
-            if not gameThread.author:
+            gameThread = self.lemmy.getPost(gThread[0]["id"])
+            if not gameThread['creator']:
                 self.log.warning("Game thread appears to have been deleted.")
                 q = "update {}threads set deleted=1 where id='{}';".format(
                     self.dbTablePrefix, gameThread.id
@@ -1113,22 +1113,22 @@ class Bot(object):
 
                 gameThread = None
             else:
-                if gameThread.selftext.find("\n\n^^^Last ^^^Updated") != -1:
-                    gameThreadText = gameThread.selftext[
-                        0 : gameThread.selftext.find("\n\n^^^Last ^^^Updated:")
+                if gameThread['post']['body'].find("\n\n^Last^ ^Updated^") != -1:
+                    gameThreadText = gameThread['post']['body'][
+                        0 : gameThread['post']['body'].find("\n\n^Last^ ^Updated:^")
                     ]
-                elif gameThread.selftext.find("\n\n^^^Posted") != -1:
-                    gameThreadText = gameThread.selftext[
-                        0 : gameThread.selftext.find("\n\n^^^Posted:")
+                elif gameThread['post']['body'].find("\n\n^Posted^") != -1:
+                    gameThreadText = gameThread['post']['body'][
+                        0 : gameThread['post']['body'].find("\n\n^Posted:^")
                     ]
                 else:
-                    gameThreadText = gameThread.selftext
+                    gameThreadText = gameThread['post']['body']
 
                 self.threadCache["game"].update(
                     {
                         "thread": gameThread,
                         "text": gameThreadText,
-                        "title": gameThread.title
+                        "title": gameThread['post']['name']
                         if gameThread not in [None, False]
                         else None,
                     }
@@ -1245,7 +1245,7 @@ class Bot(object):
                 return
 
             # Unsticky stale threads
-            if self.settings.get("Reddit", {}).get("STICKY", False):
+            if self.settings.get("Lemmy", {}).get("STICKY", False):
                 # Make sure tailgate thread is marked as stale, since we want the game thread to be sticky instead
                 if (
                     self.threadCache.get("tailgate", {}).get("thread")
@@ -1272,19 +1272,19 @@ class Bot(object):
                     "game",
                     postFooter="""
 
-^^^Posted: ^^^"""
+^Posted:^ """
                     + self.convert_timezone(
                         datetime.utcnow(),
                         self.settings.get("Bot", {}).get(
                             "TEAM_TIMEZONE", "America/New_York"
                         ),
-                    ).strftime("%m/%d/%Y ^^^%I:%M:%S ^^^%p ^^^%Z"),
+                    ).strftime("^%m/%d/%Y^ ^%I:%M:%S^ ^%p^ ^%Z^"),
                 )
                 self.threadCache["game"].update(
                     {
                         "thread": gameThread,
                         "text": gameThreadText,
-                        "title": gameThread.title
+                        "title": gameThread['post']['name']
                         if gameThread not in [None, False]
                         else None,
                     }
@@ -1327,23 +1327,23 @@ class Bot(object):
                     text += (
                         """
 
-^^^Last ^^^Updated: ^^^"""
+^Last^ ^Updated:^ """
                         + self.convert_timezone(
                             datetime.utcnow(),
                             self.settings.get("Bot", {}).get(
                                 "TEAM_TIMEZONE", "America/New_York"
                             ),
-                        ).strftime("%m/%d/%Y ^^^%I:%M:%S ^^^%p ^^^%Z")
+                        ).strftime("^%m/%d/%Y^ ^%I:%M:%S^ ^%p^ ^%Z^")
                     )
-                    self.threadCache["game"]["thread"].edit(text)
+                    self.lemmy.editPost(gameThread["post"]["id"], title=gameThread["post"]["name"], body=text)
                     self.log.info("Edits submitted for game thread.")
                     self.count_check_edit(
-                        self.threadCache["game"]["thread"].id,
+                        self.threadCache["game"]["thread"]['post']['id'],
                         self.allData["gameDetails"].get("phase", "UNKNOWN"),
                         edit=True,
                     )
                     self.log_last_updated_date_in_db(
-                        self.threadCache["game"]["thread"].id
+                        self.threadCache["game"]["thread"]['post']['id']
                     )
                 elif text == "":
                     self.log.info(
@@ -1352,7 +1352,7 @@ class Bot(object):
                 else:
                     self.log.info("No changes to game thread.")
                     self.count_check_edit(
-                        self.threadCache["game"]["thread"].id,
+                        self.threadCache["game"]["thread"]['post']['id'],
                         self.allData["gameDetails"].get("phase", "UNKNOWN"),
                         edit=False,
                     )
@@ -1542,7 +1542,7 @@ class Bot(object):
             return
 
         # Unsticky stale threads
-        if self.settings.get("Reddit", {}).get("STICKY", False):
+        if self.settings.get("Lemmy", {}).get("STICKY", False):
             # Make sure game thread is marked as stale, since we want the post game thread to be sticky instead
             if (
                 self.threadCache["game"].get("thread")
@@ -1566,8 +1566,8 @@ class Bot(object):
             self.log.info(
                 "Post Game Thread found in database [{}].".format(pgThread[0]["id"])
             )
-            postGameThread = self.reddit.submission(pgThread[0]["id"])
-            if not postGameThread.author:
+            postGameThread = self.lemmy.getPost(pgThread[0]["id"])
+            if not postGameThread['creator']:
                 self.log.warning("Post game thread appears to have been deleted.")
                 q = "update {}threads set deleted=1 where id='{}';".format(
                     self.dbTablePrefix, postGameThread.id
@@ -1580,22 +1580,22 @@ class Bot(object):
 
                 postGameThread = None
             else:
-                if postGameThread.selftext.find("\n\n^^^Last ^^^Updated") != -1:
-                    postGameThreadText = postGameThread.selftext[
-                        0 : postGameThread.selftext.find("\n\n^^^Last ^^^Updated:")
+                if postGameThread['post']['body'].find("\n\n^Last^ ^Updated^") != -1:
+                    postGameThreadText = postGameThread['post']['body'][
+                        0 : postGameThread['post']['body'].find("\n\n^Last^ ^Updated:^")
                     ]
-                elif postGameThread.selftext.find("\n\n^^^Posted") != -1:
-                    postGameThreadText = postGameThread.selftext[
-                        0 : postGameThread.selftext.find("\n\n^^^Posted:")
+                elif postGameThread['post']['body'].find("\n\n^Posted^") != -1:
+                    postGameThreadText = postGameThread['post']['body'][
+                        0 : postGameThread['post']['body'].find("\n\n^Posted:^")
                     ]
                 else:
-                    postGameThreadText = postGameThread.selftext
+                    postGameThreadText = postGameThread['post']['body']
 
                 self.threadCache["post"].update(
                     {
                         "thread": postGameThread,
                         "text": postGameThreadText,
-                        "title": postGameThread.title
+                        "title": postGameThread['post']['name']
                         if postGameThread not in [None, False]
                         else None,
                     }
@@ -1609,19 +1609,19 @@ class Bot(object):
                 "post",
                 postFooter="""
 
-^^^Posted: ^^^"""
+^Posted:^ """
                 + self.convert_timezone(
                     datetime.utcnow(),
                     self.settings.get("Bot", {}).get(
                         "TEAM_TIMEZONE", "America/New_York"
                     ),
-                ).strftime("%m/%d/%Y ^^^%I:%M:%S ^^^%p ^^^%Z"),
+                ).strftime("^%m/%d/%Y^ ^%I:%M:%S^ ^%p^ ^%Z^"),
             )
             self.threadCache["post"].update(
                 {
                     "thread": postGameThread,
                     "text": postGameThreadText,
-                    "title": postGameThread.title
+                    "title": postGameThread['post']['name']
                     if postGameThread not in [None, False]
                     else None,
                 }
@@ -1656,21 +1656,22 @@ class Bot(object):
                         text += (
                             """
 
-^^^Last ^^^Updated: ^^^"""
+^Last^ ^Updated:^ """
                             + self.convert_timezone(
                                 datetime.utcnow(),
                                 self.settings.get("Bot", {}).get(
                                     "TEAM_TIMEZONE", "America/New_York"
                                 ),
-                            ).strftime("%m/%d/%Y ^^^%I:%M:%S ^^^%p ^^^%Z")
+                            ).strftime("^%m/%d/%Y^ ^%I:%M:%S^ ^%p^ ^%Z^")
                         )
-                        self.threadCache["post"]["thread"].edit(text)
+                        self.lemmy.editPost(self.threadCache["post"]["id"], title=self.threadCache["post"]["name"], body=text)
+                        # self.threadCache["post"]["thread"].edit(text)
                         self.log.info("Post game thread edits submitted.")
                         self.log_last_updated_date_in_db(
-                            self.threadCache["post"]["thread"].id
+                            self.threadCache["post"]["thread"]['post']['id']
                         )
                         self.count_check_edit(
-                            self.threadCache["post"]["thread"].id,
+                            self.threadCache["post"]["thread"]['post']['id'],
                             self.allData["gameDetails"].get("phase", "UNKNOWN"),
                             edit=True,
                         )
@@ -1681,7 +1682,7 @@ class Bot(object):
                     else:
                         self.log.info("No changes to post game thread.")
                         self.count_check_edit(
-                            self.threadCache["post"]["thread"].id,
+                            self.threadCache["post"]["thread"]['post']['id'],
                             self.allData["gameDetails"].get("phase", "UNKNOWN"),
                             edit=False,
                         )
@@ -1712,12 +1713,10 @@ class Bot(object):
                 self.stopFlags.update({"post": True})
                 break
             elif update_postgame_thread_until == "An hour after thread is posted":
-                self.log.debug(
-                    f'Thread posted: {int(self.threadCache["post"]["thread"].created_utc)}, 1 hour ago: {round(time.time()) - 3600}, minutes to go: {60 - (round((time.time() - int(self.threadCache["post"]["thread"].created_utc)) / 60))}'
-                )
                 if (
-                    int(self.threadCache["post"]["thread"].created_utc)
-                    <= int(time.time()) - 3600
+                        datetime.utcnow() - datetime.strptime(postGameThread["post"]["published"],
+                                                           '%Y-%m-%dT%H:%M:%S.%f')
+                        >= timedelta(hours=1)
                 ):
                     # Post game thread was posted more than an hour ago
                     self.log.info(
@@ -2033,7 +2032,7 @@ class Bot(object):
             return True
 
     def count_check_edit(self, threadId, status, edit=False):
-        # threadId = reddit thread id, status = game status (statusCode, code for detailed state)
+        # threadId = lemmy thread id, status = game status (statusCode, code for detailed state)
         sq = "select checks,edits from {}thread_edits where threadId='{}' and status='{}';".format(
             self.dbTablePrefix, threadId, status
         )
@@ -2093,17 +2092,18 @@ class Bot(object):
                 data=self.allData,
                 settings=self.settings,
             )
+            title = title.replace('\n', '')
             self.log.debug("Rendered {} title: {}".format(thread, title))
         except Exception as e:
             self.log.error("Error rendering {} title: {}".format(thread, e))
             title = None
             self.error_notification(f"Error rendering title for {thread} thread")
 
-        sticky = self.settings.get("Reddit", {}).get("STICKY", False) is True
+        sticky = self.settings.get("Lemmy", {}).get("STICKY", False) is True
         inboxReplies = (
-            self.settings.get("Reddit", {}).get("INBOX_REPLIES", False) is True
+            self.settings.get("Lemmy", {}).get("INBOX_REPLIES", False) is True
         )
-        flairMode = self.settings.get("Reddit", {}).get("FLAIR_MODE", "none")
+        flairMode = self.settings.get("Lemmy", {}).get("FLAIR_MODE", "none")
         flair = (
             self.settings.get("Tailgate Thread", {}).get("FLAIR", "")
             if thread == "tailgate"
@@ -2154,29 +2154,31 @@ class Bot(object):
         theThread = None
         text = ""
         try:
-            for p in self.subreddit.new():
-                if p.author == self.reddit.user.me() and p.title == title:
-                    # Found existing thread...
+            for p in self.lemmy.listPosts():
+                if (
+                    p["creator"]["name"] == self.lemmy.username
+                    and p["post"]["name"] == title
+                ):                    # Found existing thread...
                     self.log.info("Found an existing {} thread...".format(thread))
                     theThread = p
-                    if theThread.selftext.find("\n\n^^^Last ^^^Updated") != -1:
-                        text = theThread.selftext[
-                            0 : theThread.selftext.find("\n\n^^^Last ^^^Updated:")
+                    if theThread['post']['body'].find("\n\n^Last^ ^Updated^") != -1:
+                        text = theThread['post']['body'][
+                            0 : theThread['post']['body'].find("\n\n^Last^ ^Updated:^")
                         ]
-                    elif theThread.selftext.find("\n\n^^^Posted") != -1:
-                        text = theThread.selftext[
-                            0 : theThread.selftext.find("\n\n^^^Posted:")
+                    elif theThread['post']['body'].find("\n\n^Posted^") != -1:
+                        text = theThread['post']['body'][
+                            0 : theThread['post']['body'].find("\n\n^Posted:^")
                         ]
                     else:
-                        text = theThread.selftext
+                        text = theThread['post']['body']
 
                     if sticky:
                         self.sticky_thread(theThread)
 
                     break
         except Exception as e:
-            self.log.error("Error checking subreddit for existing posts: {}".format(e))
-            self.error_notification("Error checking subreddit for existing posts")
+            self.log.error("Error checking community for existing posts: {}".format(e))
+            self.error_notification("Error checking community for existing posts")
 
         if not theThread:
             try:
@@ -2191,7 +2193,7 @@ class Bot(object):
                 self.log.error("Error rendering {} text: {}".format(thread, e))
                 text = None
                 self.error_notification(
-                    f"{thread.title()} thread not posted due to failure rendering title or text."
+                    f"{thread['post']['name']} thread not posted due to failure rendering title or text."
                 )
 
             if not (title and text):
@@ -2204,15 +2206,10 @@ class Bot(object):
 
             # Submit thread
             try:
-                theThread = self.submit_reddit_post(
+                theThread = self.submit_lemmy_post(
                     title=title,
                     text=fullText,
-                    inboxReplies=inboxReplies,
                     sticky=sticky,
-                    flairMode=flairMode,
-                    flair=flair,
-                    sort=sort,
-                    live_discussion=liveDiscussion,
                 )
                 self.log.info("Submitted {} thread: ({}).".format(thread, theThread))
             except Exception as e:
@@ -2226,7 +2223,7 @@ class Bot(object):
                     thread, self.allData["gameId"]
                 )
             )
-            self.insert_thread_to_db(self.allData["gameId"], theThread, thread)
+            self.insert_thread_to_db(self.allData["gameId"], theThread['post']['id'], thread)
 
             # Check for webhooks
             for w in range(0, 10):
@@ -2286,8 +2283,8 @@ class Bot(object):
             else:
                 self.notify_prowl(
                     apiKey=prowlKey,
-                    event=f"{self.myTeam['nickName']} {thread.title()} Thread Posted",
-                    description=f"""{self.myTeam['nickName']} {thread} thread was posted to r/{self.settings["Reddit"]["SUBREDDIT"]} at {self.convert_timezone(datetime.utcfromtimestamp(theThread.created_utc),'local').strftime('%I:%M %p %Z')}\nThread title: {theThread.title}\nURL: {theThread.shortlink}""",
+                    event=f"{self.myTeam['nickName']} {thread['post']['name']} Thread Posted",
+                    description=f"""{self.myTeam['nickName']} {thread} thread was posted to {self.settings["Lemmy"]["COMMUNITY_NAME"]} at {self.convert_timezone(datetime.utcfromtimestamp(theThread.created_utc),'local').strftime('%I:%M %p %Z')}\nThread title: {theThread['post']['name']}\nURL: {theThread.shortlink}""",
                     priority=prowlPriority,
                     url=theThread.shortlink,
                     appName=f"redball - {self.bot.name}",
@@ -2310,11 +2307,11 @@ class Bot(object):
                 self.log.debug("Twitter disabled or not configured")
             else:
                 if thread == "game":
-                    message = f"""{theThread.title} - Join the discussion: {theThread.shortlink} #{self.myTeam['nickName'].replace(' ','')}"""
+                    message = f"""{theThread['post']['name']} - Join the discussion: {theThread.shortlink} #{self.myTeam['nickName'].replace(' ','')}"""
                 elif thread == "tailgate":
-                    message = f"""{theThread.title} - Join the discussion: {theThread.shortlink} #{self.myTeam['nickName'].replace(' ','')}"""
+                    message = f"""{theThread['post']['name']} - Join the discussion: {theThread.shortlink} #{self.myTeam['nickName'].replace(' ','')}"""
                 elif thread == "post":
-                    message = f"""{theThread.title} - The discussion continues: {theThread.shortlink} #{self.myTeam['nickName'].replace(' ','')}"""
+                    message = f"""{theThread['post']['name']} - The discussion continues: {theThread.shortlink} #{self.myTeam['nickName'].replace(' ','')}"""
                 else:
                     self.log.error(f"Can't tweet about unknown thread type [{thread}]!")
                     return (None, text)
@@ -2372,12 +2369,13 @@ class Bot(object):
                     self.log.debug("I did not find a previous thread to lock.")
 
             if restrictSelfPosts:
+                raise NotImplemented  #TODO: implement restricted posting for lemmy
                 # Disable self posts now that the thread is submitted
                 self.log.debug(
                     f"Attempting to disable self posts after submitting {thread} thread..."
                 )
                 try:
-                    self.subreddit.mod.update(link_type="link")
+                    # self.subreddit.mod.update(link_type="link")
                     self.log.debug("Self posts disabled.")
                 except Exception as e:
                     self.log.warning(
@@ -2486,79 +2484,28 @@ class Bot(object):
 
         return False
 
-    def submit_reddit_post(
+    def submit_lemmy_post(
         self,
         title,
         text,
         sub=None,
-        inboxReplies=False,
         sticky=False,
-        flairMode=None,
-        flair=None,
-        sort=None,
-        live_discussion=False,
     ):
         if sub:
-            subreddit = self.reddit.subreddit(sub)
+            community = self.lemmy.getCommunity(sub)
         else:
-            subreddit = self.subreddit
+            community = self.lemmy.community
 
-        post = subreddit.submit(
+        title = title.strip("\n")
+        text = self._truncate_post(text)
+        post = self.lemmy.submitPost(
             title=title,
-            selftext=text,
-            send_replies=inboxReplies,
-            discussion_type="CHAT" if live_discussion else None,
+            body=text,
         )
         self.log.info("Thread ({}) submitted: {}".format(title, post))
 
         if sticky:
-            self.sticky_thread(post)
-
-        if flairMode == "submitter":
-            if flair in [None, ""]:
-                self.log.warning("FLAIR_MODE = submitter, but no flair provided...")
-            else:
-                self.log.info("Adding flair to submission as submitter...")
-                choices = post.flair.choices()
-                flairsuccess = False
-                for p in choices:
-                    if p["flair_text"] == flair:
-                        post.flair.select(p["flair_template_id"])
-                        flairsuccess = True
-                if flairsuccess:
-                    self.log.info("Submission flaired...")
-                else:
-                    self.log.error(
-                        "Flair not set: could not find flair in available choices; check subreddit configuration."
-                    )
-        elif flairMode == "mod":
-            if flair in [None, ""]:
-                self.log.warning("FLAIR_MODE = mod, but no flair provided...")
-            else:
-                self.log.info("Adding flair to submission as mod...")
-                try:
-                    post.mod.flair(flair)
-                    self.log.info("Submission flaired...")
-                except Exception:
-                    self.log.error(
-                        "Failed to set flair on thread {post.id} (check mod privileges or change FLAIR_MODE to submitter), continuing..."
-                    )
-                    self.error_notification(
-                        "Failed to set flair (check mod privileges or change FLAIR_MODE to submitter)"
-                    )
-
-        if sort not in [None, ""]:
-            self.log.info("Setting suggested sort to {}...".format(sort))
-            try:
-                post.mod.suggested_sort(sort)
-                self.log.info("Suggested sort set...")
-            except Exception:
-                self.log.error(
-                    "Setting suggested sort failed (check mod privileges), continuing..."
-                )
-                self.error_notification(
-                    f"Failed to set suggested sort on thread {post.id} (check mod privileges)"
-                )
+            self.lemmy.stickyPost(post["post"]["id"])
 
         return post
 
@@ -2609,22 +2556,24 @@ class Bot(object):
         return ""
 
     def sticky_thread(self, thread):
-        self.log.info("Stickying thread [{}]...".format(thread.id))
+        self.log.info("Stickying thread [{}]...".format(thread["post"]["id"]))
         try:
-            thread.mod.sticky()
-            self.log.info("Thread [{}] stickied...".format(thread.id))
+            self.lemmy.stickyPost(thread["post"]["id"])
+            self.log.info("Thread [{}] stickied...".format(thread["post"]["id"]))
         except Exception:
             self.log.warning(
                 "Sticky of thread [{}] failed. Check mod privileges or the thread may have already been sticky.".format(
-                    thread.id
+                    thread["post"]["id"]
                 )
             )
 
     def unsticky_threads(self, threads):
         for t in threads:
             try:
-                self.log.debug("Attempting to unsticky thread [{}]".format(t.id))
-                t.mod.sticky(state=False)
+                self.log.debug(
+                    "Attempting to unsticky thread [{}]".format(t["post"]["id"])
+                )
+                self.lemmy.unStickyPost(t["post"]["id"])
             except Exception:
                 self.log.debug(
                     "Unsticky of thread [{}] failed. Check mod privileges or the thread may not have been sticky.".format(
@@ -2647,7 +2596,7 @@ class Bot(object):
 
         queries.append(
             """CREATE TABLE IF NOT EXISTS {}threads (
-                gameId integer not null,
+                gameId text not null,
                 type text not null,
                 gameDate text not null,
                 id text not null,
@@ -2708,92 +2657,39 @@ class Bot(object):
             self.log.info("Restarted logger with new settings")
 
         if (
-            self.prevSettings["Reddit Auth"] != self.settings["Reddit Auth"]
-            or self.prevSettings["Reddit"] != self.settings["Reddit"]
+            self.prevSettings["Lemmy Auth"] != self.settings["Lemmy Auth"]
+            or self.prevSettings["Lemmy"] != self.settings["Lemmy"]
         ):
             self.log.info(
-                "Detected new Reddit Authorization info. Re-initializing Reddit API..."
+                "Detected new Lemmy Authorization info. Re-initializing Lemmy API..."
             )
-            self.init_reddit()
+            self.init_lemmy()
 
         # Check here if settings have changed for other services added in the future (twitter, etc.)
 
         self.log.debug("Refreshed settings: {}".format(self.settings))
 
-    def init_reddit(self):
-        self.log.debug(f"Initializing Reddit API with praw v{praw.__version__}...")
+    def init_lemmy(self):
+        self.log.debug(f"Initiating Lemmy API with plaw")
         with redball.REDDIT_AUTH_LOCKS[str(self.bot.redditAuth)]:
             try:
-                self.reddit = praw.Reddit(
-                    client_id=self.settings["Reddit Auth"]["reddit_clientId"],
-                    client_secret=self.settings["Reddit Auth"]["reddit_clientSecret"],
-                    token_manager=self.bot.reddit_auth_token_manager,
-                    user_agent="redball Football Game Thread Bot - https://github.com/toddrob99/redball/ - r/{}".format(
-                        self.settings["Reddit"].get("SUBREDDIT", "")
-                    ),
-                )
+                # Check for Lemmy
+                instance_name = self.settings.get("Lemmy Auth", {}).get("lemmy_instance", "")
+                username = self.settings.get("Lemmy Auth", {}).get("lemmy_username", "")
+                password = self.settings.get("Lemmy Auth", {}).get("lemmy_password", "")
+                community = self.settings.get("Lemmy", {}).get("COMMUNITY_NAME")
+
+                if "" in [instance_name, username, password, community]:
+                    self.log.warn("Lemmy not fully configured")
+
+                self.lemmy = plaw.Lemmy(instance_name, username, password)
+                self.community = self.lemmy.getCommunity(community)
             except Exception as e:
                 self.log.error(
-                    "Error encountered attempting to initialize Reddit: {}".format(e)
+                    "Error encountered attempting to initialize Lemmy: {}".format(e)
                 )
-                self.error_notification("Error initializing Reddit")
+                self.error_notification("Error initializing Lemmy")
                 raise
-
-            scopes = [
-                "identity",
-                "submit",
-                "edit",
-                "read",
-                "modposts",
-                "privatemessages",
-                "flair",
-                "modflair",
-            ]
-            try:
-                praw_scopes = self.reddit.auth.scopes()
-            except Exception as e:
-                self.log.error(
-                    "Error encountered attempting to look up authorized Reddit scopes: {}".format(
-                        e
-                    )
-                )
-                self.error_notification(
-                    "Error encountered attempting to look up authorized Reddit scopes"
-                )
-                raise
-
-        missing_scopes = []
-        self.log.debug("Reddit authorized scopes: {}".format(praw_scopes))
-        try:
-            if self.reddit.user.me() is None:
-                raise ValueError(
-                    "Failed to initialize Reddit instance--authorized user is None"
-                )
-            self.log.info("Reddit authorized user: {}".format(self.reddit.user.me()))
-        except Exception as e:
-            self.log.warning(
-                "Error encountered attempting to identify authorized Reddit user (identity scope may not be authorized): {}".format(
-                    e
-                )
-            )
-            self.error_notification(
-                "Error encountered attempting to identify authorized Reddit user (identity scope may not be authorized)"
-            )
-
-        for scope in scopes:
-            if scope not in praw_scopes:
-                missing_scopes.append(scope)
-
-        if len(missing_scopes):
-            self.log.warning(
-                "Scope(s) not authorized: {}. Please check/update/re-authorize Reddit Authorization in redball System Config.".format(
-                    missing_scopes
-                )
-            )
-
-        self.subreddit = self.reddit.subreddit(
-            self.settings.get("Reddit", {}).get("SUBREDDIT")
-        )
 
     def eod_loop(self, today):
         # today = date that's already been finished ('%Y-%m-%d')
@@ -2909,13 +2805,13 @@ class Bot(object):
                     "posted": True
                     if self.threadCache.get("tailgate", {}).get("thread")
                     else False,
-                    "id": self.threadCache.get("tailgate", {}).get("thread").id
+                    "id": self.threadCache.get("tailgate", {}).get("thread")['post']['id']
                     if self.threadCache.get("tailgate", {}).get("thread")
                     else None,
-                    "url": self.threadCache.get("tailgate", {}).get("thread").shortlink
+                    "url": self.threadCache.get("tailgate", {}).get("thread")['ap_id']
                     if self.threadCache.get("tailgate", {}).get("thread")
                     else None,
-                    "title": self.threadCache.get("tailgate", {}).get("title")
+                    "title": self.threadCache.get("tailgate", {}).get("name")
                     if self.threadCache.get("tailgate", {}).get("thread")
                     else None,
                 },
@@ -2944,13 +2840,13 @@ class Bot(object):
                             "posted": True
                             if self.threadCache["game"].get("thread")
                             else False,
-                            "id": self.threadCache["game"].get("thread").id
+                            "id": self.threadCache["game"].get("thread")['post']['id']
                             if self.threadCache["game"].get("thread")
                             else None,
-                            "url": self.threadCache["game"].get("thread").shortlink
+                            "url": self.threadCache["game"].get("thread")['ap_id']
                             if self.threadCache["game"].get("thread")
                             else None,
-                            "title": self.threadCache["game"].get("title")
+                            "title": self.threadCache["game"].get("name")
                             if self.threadCache["game"].get("thread")
                             else None,
                         },
@@ -2961,13 +2857,13 @@ class Bot(object):
                             "posted": True
                             if self.threadCache["post"].get("thread")
                             else False,
-                            "id": self.threadCache["post"].get("thread").id
+                            "id": self.threadCache["post"].get("thread")['post']['id']
                             if self.threadCache["post"].get("thread")
                             else None,
-                            "url": self.threadCache["post"].get("thread").shortlink
+                            "url": self.threadCache["post"].get("thread")['ap_id']
                             if self.threadCache["post"].get("thread")
                             else None,
-                            "title": self.threadCache["post"].get("title")
+                            "title": self.threadCache["post"].get("name")
                             if self.threadCache["post"].get("thread")
                             else None,
                         },
@@ -3176,3 +3072,13 @@ class Bot(object):
                 self.getNflToken(nfl)
             else:
                 raise
+
+    def _truncate_post(self, text):
+        warning_text = " \  # Truncated, post length limit reached."
+        max_length = self.settings.get("Lemmy", {}).get("POST_CHARACTER_LIMIT", 10000) - len(warning_text)
+        if len(text) >= max_length:
+            new_text = text[0:max_length - 1]
+            new_text += warning_text
+        else:
+            new_text = text
+        return new_text
